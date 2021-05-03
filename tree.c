@@ -1,7 +1,17 @@
+/* see LICENSE.tree */
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <dirent.h>
+#include <fnmatch.h>
+#include "arg.h"
+
+enum {
+	IGNORE_CASE = 1,
+	PRUNE = 2,
+	MATCHDIR = 4,
+};	
 
 typedef struct counter {
 	size_t dirs;
@@ -14,8 +24,10 @@ typedef struct entry {
 	struct entry *next;
 } entry_t;
 
+char *argv0;
+
 int
-walk(const char* directory, const char* prefix, counter_t *counter)
+walk(const char* directory, const char* prefix, const char *pattern, int pflags, counter_t *counter)
 {
 	entry_t *head = NULL, *current, *iter;
 	size_t size = 0, index;
@@ -64,6 +76,15 @@ walk(const char* directory, const char* prefix, counter_t *counter)
 	}
 
 	for (index = 0; index < size; index++) {
+		int match;
+		int flags;
+		match = 0;
+		flags = (pflags&IGNORE_CASE)*FNM_CASEFOLD;
+		
+		if (fnmatch(pattern, head->name, flags) == 0) {
+			match = 1;
+		}
+		
 		if (index == size - 1) {
 			pointer = "└── ";
 			segment = "    ";
@@ -72,7 +93,7 @@ walk(const char* directory, const char* prefix, counter_t *counter)
 			segment = "│   ";
 		}
 
-		printf("%s%s%s\n", prefix, pointer, head->name);
+		if (match != 0) printf("%s%s%s\n", prefix, pointer, head->name);
 
 		if (head->is_dir) {
 			full_path = malloc(strlen(directory) + strlen(head->name) + 2);
@@ -81,11 +102,11 @@ walk(const char* directory, const char* prefix, counter_t *counter)
 			next_prefix = malloc(strlen(prefix) + strlen(segment) + 1);
 			sprintf(next_prefix, "%s%s", prefix, segment);
 
-			walk(full_path, next_prefix, counter);
+			walk(full_path, next_prefix, pattern, pflags, counter);
 			free(full_path);
 			free(next_prefix);
 		} else {
-			counter->files++;
+			if (match != 0) counter->files++;
 		}
 
 		current = head;
@@ -98,15 +119,52 @@ walk(const char* directory, const char* prefix, counter_t *counter)
 	return 0;
 }
 
+void
+usage(void)
+{
+	fprintf(stderr, "usage: %s [-lC] [-P pattern] [--noreport] [PATH]\n", argv0);
+	exit(0);
+}
+
 int
 main(int argc, char *argv[])
 {
-	char* directory = argc > 1 ? argv[1] : ".";
+	char *longarg, *pattern;
+	int pflags, noreport;
+	noreport = 0;
+	pflags = 0;
+	pattern = "*";
+	ARGBEGIN {
+	case 'l':
+		/* in original this enables symlink following */
+		break;
+	case 'P':
+		/* in original this enables pattern matching */
+		pattern = EARGF(usage());
+		break;
+	case 'C':
+		/* in original this enables colors */
+		break;
+	case '-':
+		/* I guess I can add --arg parsing here */
+		/* pass uses --noreport --prune --matchdirs --ignore-case */
+		longarg = EARGF(usage());	
+		if (longarg == NULL) break;
+		if (strcmp(longarg, "noreport") == 0) noreport = 1;
+		if (strcmp(longarg, "ignore-case") == 0) pflags |= IGNORE_CASE;
+		if (strcmp(longarg, "prune") == 0) pflags |= PRUNE;
+		if (strcmp(longarg, "matchdirs") == 0) pflags |= MATCHDIR;
+		break;
+	default:
+	} ARGEND
+	
+	char* directory = argc > 0 ? argv[0] : ".";
 	printf("%s\n", directory);
 
 	counter_t counter = {0, 0};
-	walk(directory, "", &counter);
+	walk(directory, "", pattern, pflags, &counter);
 
-	printf("\n%zu directories, %zu files\n", counter.dirs - 1, counter.files);
+	if (noreport == 0)
+		printf("\n%zu directories, %zu files\n", counter.dirs - 1, counter.files);
 	return 0;
 }

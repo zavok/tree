@@ -76,13 +76,18 @@ walk(const char* directory, const char* prefix, const char *pattern, int pflags,
 	}
 
 	for (index = 0; index < size; index++) {
+		const char *newpattern;
 		int match;
 		int flags;
+		newpattern = pattern;
 		match = 0;
+
 		flags = (pflags&IGNORE_CASE)*FNM_CASEFOLD;
-		
-		if (fnmatch(pattern, head->name, flags) == 0) {
+
+		if (pattern == NULL) match = 1;	
+		else if (fnmatch(pattern, head->name, flags) == 0) {
 			match = 1;
+			newpattern = NULL;
 		}
 		
 		if (index == size - 1) {
@@ -102,7 +107,7 @@ walk(const char* directory, const char* prefix, const char *pattern, int pflags,
 			next_prefix = malloc(strlen(prefix) + strlen(segment) + 1);
 			sprintf(next_prefix, "%s%s", prefix, segment);
 
-			walk(full_path, next_prefix, pattern, pflags, counter);
+			walk(full_path, next_prefix, newpattern, pflags, counter);
 			free(full_path);
 			free(next_prefix);
 		} else {
@@ -133,7 +138,7 @@ main(int argc, char *argv[])
 	int pflags, noreport;
 	noreport = 0;
 	pflags = 0;
-	pattern = "*";
+	pattern = NULL;
 	ARGBEGIN {
 	case 'l':
 		/* in original this enables symlink following */
